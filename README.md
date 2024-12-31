@@ -1,4 +1,4 @@
-# Stacks ,Token Vesting Contract with Internal Token Implementation
+# Stacks Token Vesting Contract with Internal Token Implementation
 
 This smart contract implements a configurable token vesting system, including built-in functionality for managing a fungible token. It is designed for use cases where tokens need to be distributed to recipients over a defined schedule, ensuring compliance with predefined conditions.
 
