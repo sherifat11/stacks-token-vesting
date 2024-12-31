@@ -142,3 +142,93 @@
               (unwrap! (safe-mul (get total-amount schedule) elapsed) u0)
               total-period) 
               u0)))))))
+
+;; Safe division function
+;; Safe division function
+(define-private (safe-div (a uint) (b uint))
+  (if (> b u0)
+      (ok (/ a b))
+      err-arithmetic-overflow))
+
+;; Calculate amount vested by milestones
+(define-private (get-milestone-vested (schedule {
+    total-amount: uint,
+    start-block: uint,
+    cliff-blocks: uint,
+    duration-blocks: uint,
+    released: uint,
+    milestones: (list 10 {block: uint, percentage: uint}),
+    milestone-count: uint
+  }) (current-block uint))
+  (let (
+    (milestone-list (get milestones schedule))
+    (count (get milestone-count schedule))
+  )
+    (fold check-milestone 
+      (unwrap! (slice? milestone-list u0 count) u0)
+      u0)))
+
+;; Helper to check individual milestone
+(define-private (check-milestone 
+    (milestone {block: uint, percentage: uint}) 
+    (current-vested uint))
+  (let (
+    (milestone-block (get block milestone))
+    (milestone-percent (get percentage milestone))
+  )
+    (if (>= stacks-block-height milestone-block)
+      (unwrap! (safe-add current-vested milestone-percent) current-vested)
+      current-vested)))
+
+;; Release vested tokens
+(define-public (release)
+  (let (
+    (schedule (unwrap! (map-get? vesting-schedules {recipient: tx-sender}) err-no-schedule))
+    (vested-amount (calculate-vested-amount schedule))
+    (unreleased (unwrap! (safe-sub vested-amount (get released schedule)) err-insufficient-balance))
+  )
+    (begin
+      (asserts! (> unreleased u0) err-insufficient-balance)
+
+      ;; Update released amount
+      (map-set vesting-schedules
+        {recipient: tx-sender}
+        (merge schedule {released: vested-amount}))
+
+      ;; Transfer tokens
+      (try! (ft-transfer? vesting-token unreleased (as-contract tx-sender) tx-sender))
+      (ok true))))
+
+;; SIP-010 Trait Implementation
+(define-read-only (get-name)
+  (ok (var-get token-name)))
+
+(define-read-only (get-symbol)
+  (ok (var-get token-symbol)))
+
+(define-read-only (get-decimals)
+  (ok (var-get token-decimals)))
+
+(define-read-only (get-balance (account principal))
+  (ok (ft-get-balance vesting-token account)))
+
+(define-read-only (get-total-supply)
+  (ok (ft-get-supply vesting-token)))
+
+(define-read-only (get-token-uri)
+  (ok (some (var-get token-uri))))
+
+;; Vesting specific read functions
+(define-read-only (get-vesting-schedule (recipient principal))
+  (map-get? vesting-schedules {recipient: recipient}))
+
+(define-read-only (get-vested-amount (recipient principal))
+  (let ((schedule (unwrap! (map-get? vesting-schedules {recipient: recipient}) err-no-schedule)))
+    (ok (calculate-vested-amount schedule))))
+
+(define-read-only (get-releasable-amount (recipient principal))
+  (let (
+    (schedule (unwrap! (map-get? vesting-schedules {recipient: recipient}) err-no-schedule))
+    (vested-amount (calculate-vested-amount schedule))
+  )
+    (ok (- vested-amount (get released schedule)))))
